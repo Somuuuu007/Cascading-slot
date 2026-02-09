@@ -159,52 +159,114 @@ h2 {
 }
 
 .grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 0.56rem;
+  display: flex;
+  gap: 0;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  /* 6 cols / 4 rows = 1.5 */
+}
+
+.column-track {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  /* Gap handled by top % math */
+  border-right: 2px solid rgba(148, 163, 184, 0.15);
+  position: relative;
+  /* Anchor for absolute cells */
+  height: 100%;
+}
+
+.column-track:last-child {
+  border-right: none;
 }
 
 .cell {
-  aspect-ratio: 1 / 1;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 0.14rem;
-  background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.16), transparent 50%),
-    linear-gradient(155deg, rgba(51, 65, 85, 0.9), rgba(30, 41, 59, 0.9));
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+  position: absolute;
+  width: 100%;
+  padding: 8%;
+  /* Inner padding so symbols fit nicely */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* Ensure transitions work smoothly */
+  will-change: top, transform;
 }
 
 .cell.drop-in {
-  animation: symbolDrop 360ms cubic-bezier(0.15, 0.7, 0.25, 1) both;
+  animation: symbolDrop 600ms cubic-bezier(0.25, 1, 0.5, 1) both;
   animation-delay: var(--drop-delay, 0ms);
 }
 
 .symbol-icon {
-  color: var(--accent);
-  font-size: clamp(1.25rem, 2.1vw, 2rem);
-  font-weight: 800;
-  line-height: 1;
-  text-shadow: 0 0 12px color-mix(in srgb, var(--accent), #fff 35%);
+  width: 90%;
+  aspect-ratio: 1 / 1;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+  transition: transform 0.2s ease;
 }
 
 .symbol-label {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: clamp(0.5rem, 0.8vw, 0.62rem);
-  color: color-mix(in srgb, var(--accent), #fff 58%);
-  opacity: 0.92;
+  display: none;
 }
 
 .cell.win {
   animation: winPulse 0.45s ease-in-out infinite alternate;
-  border-color: color-mix(in srgb, var(--accent), #fff 32%);
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, rgba(15, 23, 42, 0) 70%);
+  border-color: rgba(56, 189, 248, 0.6);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.3), inset 0 0 10px rgba(56, 189, 248, 0.2);
 }
 
 .spinning .cell {
   animation: drift 0.25s ease;
+}
+
+.win-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.win-line-path {
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));
+  animation: drawLine 0.4s ease-out forwards;
+  opacity: 0.8;
+}
+
+@keyframes drawLine {
+  from {
+    stroke-dasharray: 0 1000;
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+
+  to {
+    stroke-dasharray: 1000 0;
+    stroke-dashoffset: 0;
+    opacity: 0.8;
+  }
+}
+
+.cell.pop {
+  animation: popOut 0.3s ease-in forwards !important;
+}
+
+@keyframes popOut {
+  0% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0);
+    opacity: 0;
+  }
 }
 
 .controls {
