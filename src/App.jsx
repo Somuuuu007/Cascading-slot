@@ -5,29 +5,26 @@ const COLS = 6;
 const BET_STEPS = [0.5, 1, 2, 5, 10, 20];
 const SYMBOLS = [
   // Row 1
-  { id: 'triple7', label: 'Jackpot', color: '#a855f7', pay: 5.0, img: '/Image1.png' },
-  { id: 'watermelon', label: 'Melon', color: '#ef4444', pay: 2.0, img: '/Image2.png' },
-  { id: 'bar', label: 'Bar', color: '#ef4444', pay: 3.5, img: '/Image3.png' },
+  { id: 'triple7', label: 'Jackpot', color: '#a855f7', pay: 50.0, img: '/Image1.png', weight: 2 },
+  { id: 'watermelon', label: 'Melon', color: '#ef4444', pay: 2.0, img: '/Image2.png', weight: 4 },
   // Row 2
-  { id: 'apple', label: 'Apple', color: '#ef4444', pay: 1.2, img: '/Image4.png' },
-  { id: 'suits', label: 'Suits', color: '#9ca3af', pay: 1.0, img: '/Image5.png' },
-  { id: 'crown', label: 'Crown', color: '#eab308', pay: 4.0, img: '/Image6.png' },
+  { id: 'apple', label: 'Apple', color: '#ef4444', pay: 1.2, img: '/Image4.png', weight: 6 },
+  { id: 'suits', label: 'Suits', color: '#9ca3af', pay: 1.0, img: '/Image5.png', weight: 7 },
+  { id: 'crown', label: 'Crown', color: '#eab308', pay: 40.0, img: '/Image6.png', weight: 2 },
   // Row 3
-  { id: 'bonus', label: 'Bonus', color: '#3b82f6', pay: 8.0, img: '/Image7.png' },
-  { id: 'cherry', label: 'Cherry', color: '#ef4444', pay: 1.5, img: '/Image8.png' },
-  { id: 'coin', label: 'Coin', color: '#f59e0b', pay: 2.5, img: '/Image9.png' },
+  { id: 'bonus', label: 'Bonus', color: '#3b82f6', pay: 8.0, img: '/Image7.png', weight: 2 },
+  { id: 'cherry', label: 'Cherry', color: '#ef4444', pay: 1.5, img: '/Image8.png', weight: 5 },
+  { id: 'coin', label: 'Coin', color: '#f59e0b', pay: 2.5, img: '/Image9.png', weight: 4 },
   // Row 4
-  { id: 'wild', label: 'Wild', color: '#22c55e', pay: 10.0, img: '/Image10.png' },
-  { id: 'lemon', label: 'Lemon', color: '#eab308', pay: 1.4, img: '/Image11.png' },
-  { id: 'red7', label: 'Seven', color: '#ef4444', pay: 3.0, img: '/Image12.png' },
+  { id: 'wild', label: 'Wild', color: '#22c55e', pay: 10.0, img: '/Image10.png', weight: 5 }, // Increased weight for Wilds
+  { id: 'lemon', label: 'Lemon', color: '#eab308', pay: 1.4, img: '/Image11.png', weight: 5 },
+  { id: 'red7', label: 'Seven', color: '#ef4444', pay: 3.0, img: '/Image12.png', weight: 3 },
 ];
 
 // Create a weighted pool to increase the frequency of low-paying symbols
 const WEIGHTED_POOL = [];
 SYMBOLS.forEach((s) => {
-  // Higher weight for lower payout symbols to ensure more matches
-  const weight = s.pay < 2 ? 5 : s.pay < 4 ? 3 : 1;
-  for (let i = 0; i < weight; i++) WEIGHTED_POOL.push(s);
+  for (let i = 0; i < s.weight; i++) WEIGHTED_POOL.push(s);
 });
 
 const getSymbol = (isNew = true) => {
@@ -45,56 +42,101 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const scanWins = (grid) => {
   const visited = new Set();
   const clusters = [];
-
   const getKey = (r, c) => `${r}-${c}`;
+  const directions = [[0, 1], [1, 0], [0, -1], [-1, 0]];
 
-  // Orthogonal + Diagonal checks would be "All Adjacent", 
-  // but standard cascading usually uses orthogonal. Stick to orthogonal for now.
-  // Actually, for better "lines", let's stick to orthogonal.
-  const directions = [
-    [0, 1], [1, 0], [0, -1], [-1, 0]
-  ];
-
+  // 1. Identify all unique symbol types present (excluding Wilds/Bonus)
+  // We will run a search for each "target" type.
+  const presentTypes = new Set();
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      const key = getKey(r, c);
-      if (visited.has(key)) continue;
+      const id = grid[r][c].id;
+      if (id !== 'wild' && id !== 'bonus') presentTypes.add(id);
+    }
+  }
 
-      const symbolId = grid[r][c].id;
-      const group = [[r, c]];
-      const queue = [[r, c]];
-      visited.add(key);
-      
-      let head = 0;
-      while(head < queue.length) {
-        const [currR, currC] = queue[head++];
+  // Global set of matched cells to avoid double-counting standard wins across passes
+  const matchedCells = new Set();
 
-        for (const [dr, dc] of directions) {
-          const nr = currR + dr;
-          const nc = currC + dc;
-          const nKey = getKey(nr, nc);
+  presentTypes.forEach((targetId) => {
+    const typeVisited = new Set();
+    
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const key = getKey(r, c);
+        if (typeVisited.has(key)) continue;
 
-          if (
-            nr >= 0 && nr < ROWS &&
-            nc >= 0 && nc < COLS &&
-            !visited.has(nKey) &&
-            grid[nr][nc].id === symbolId
-          ) {
-            visited.add(nKey);
-            group.push([nr, nc]);
-            queue.push([nr, nc]);
+        const cellId = grid[r][c].id;
+        // Start search if it's the target or a Wild
+        if (cellId === targetId || cellId === 'wild') {
+          const group = [];
+          const queue = [[r, c]];
+          typeVisited.add(key);
+          group.push([r, c]);
+
+          let head = 0;
+          while (head < queue.length) {
+            const [currR, currC] = queue[head++];
+
+            for (const [dr, dc] of directions) {
+              const nr = currR + dr;
+              const nc = currC + dc;
+              const nKey = getKey(nr, nc);
+
+              if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !typeVisited.has(nKey)) {
+                const nId = grid[nr][nc].id;
+                // Match if neighbor is Target OR Wild
+                if (nId === targetId || nId === 'wild') {
+                  typeVisited.add(nKey);
+                  group.push([nr, nc]);
+                  queue.push([nr, nc]);
+                }
+              }
+            }
+          }
+
+          if (group.length >= 3) {
+             clusters.push({
+               id: targetId, // The "Identity" of this cluster
+               color: SYMBOLS.find(s => s.id === targetId).color,
+               coords: group
+             });
+             group.forEach(([gr, gc]) => matchedCells.add(getKey(gr, gc)));
           }
         }
       }
+    }
+  });
 
-      if (group.length >= 3) {
-        clusters.push({
-          id: symbolId,
-          color: grid[r][c].color,
-          coords: group,
-        });
+  // 2. Handle "Only Wilds" clusters? 
+  // If a cluster is pure wilds, the above loop won't catch it unless we iterate 'wild' as a target type.
+  // Let's do a pass for pure Wilds if they haven't been matched yet.
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const key = getKey(r, c);
+      if (grid[r][c].id === 'wild' && !matchedCells.has(key)) {
       }
     }
+  }
+
+  // 3. Bonus Scatter Logic
+  const bonusCells = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c].id === 'bonus') {
+        bonusCells.push([r, c]);
+      }
+    }
+  }
+
+  if (bonusCells.length >= 3) {
+    clusters.push({
+      id: 'bonus',
+      color: '#3b82f6',
+      coords: bonusCells, // All scatter cells
+      isScatter: true
+    });
+    bonusCells.forEach(([r, c]) => matchedCells.add(getKey(r, c)));
   }
 
   const matches = [];
@@ -102,13 +144,23 @@ const scanWins = (grid) => {
 
   clusters.forEach((cluster) => {
     cluster.coords.forEach(([r, c]) => matches.push([r, c]));
-    const basePay = SYMBOLS.find(s => s.id === cluster.id).pay;
-    // Payout multiplier for larger clusters
+    const symbolDef = SYMBOLS.find(s => s.id === cluster.id);
+    let basePay = symbolDef ? symbolDef.pay : 0;
+    
+    // Bonus Scatter Pay: High fixed amount?
+    if (cluster.isScatter) {
+      basePay = 25.0; // Big win for bonus
+    }
+
+    // Payout multiplier
     totalWin += basePay * cluster.coords.length * (1 + (cluster.coords.length - 3) * 0.5);
   });
+  
+  // Deduplicate matches for the collapse phase
+  const uniqueMatches = Array.from(new Set(matches.map(m => m.join('-')))).map(s => s.split('-').map(Number));
 
   return {
-    matches,
+    matches: uniqueMatches,
     clusters,
     win: Number(totalWin.toFixed(2)),
   };
@@ -174,13 +226,6 @@ function App() {
     [grid]
   );
   
-  // Helper to get center coordinates for SVG lines
-  // Assuming each cell is roughly square. We can use % or rem logic if needed.
-  // A simple approach is to map grid coordinates to percentage positions.
-  // 4 rows, 6 cols.
-  // Center of cell (r, c): 
-  // X = (c * 100 / COLS) + (100 / COLS / 2) %
-  // Y = (r * 100 / ROWS) + (100 / ROWS / 2) %
   const getCenter = (r, c) => ({
     x: (c * 100) / COLS + (100 / COLS / 2),
     y: (r * 100) / ROWS + (100 / ROWS / 2),
@@ -275,7 +320,6 @@ function App() {
         <section className="slot-panel">
           <header className="panel-head">
             <div>
-              <p className="eyebrow">Cascading Slots</p>
               <h1>Crystal Vault</h1>
             </div>
             <div className="chip">{spinning ? 'IN PLAY' : 'READY'}</div>
@@ -292,13 +336,6 @@ function App() {
               {winningClusters.map((cluster, i) =>
                 cluster.coords.slice(0, -1).map(([r1, c1], j) => {
                   const [r2, c2] = cluster.coords[j + 1];
-                  // Simple connection: Connect each point to the next in the BFS order.
-                  // For a perfect MST, we'd need more logic, but this usually draws a decent path.
-                  // Alternatively, connect all to center or just adjacency.
-                  // BETTER: Draw lines between all adjacent pairs in the cluster.
-                  
-                  // Let's actually find adjacent pairs to draw robust lines.
-                  // This is a rendering pass, so let's pre-calculate segments or just iterate neighbors.
                   return null; 
                 })
               )}
